@@ -34,43 +34,63 @@ async function resolveNome(nd){
 window.salvarDiario=async function(){
   const nd=document.getElementById('f-nome').value.trim();
   if(!nd){msg('dm','error','Preencha seu nome.');return;}
-  msg('dm','loading','Salvando no Firebase...');
-  const nome=await resolveNome(nd);sn(nome);
-  document.getElementById('f-nome').value=nome;document.getElementById('r-assessor').value=nome;
-  const rec={nome,data:new Date().toDateString(),dataMs:Date.now(),
-    contatos:+document.getElementById('f-contatos').value||0,
-    reunioes:+document.getElementById('f-reunioes').value||0,
-    propostas:+document.getElementById('f-propostas').value||0,
-    fechamentos:+document.getElementById('f-fechamentos').value||0,
-    produto:document.getElementById('f-produto').value,
-    volume:+document.getElementById('f-volume').value||0,
-    dificuldade:document.getElementById('f-dificuldade').value,
-    energia:+document.getElementById('f-energia').value||7,
-    obs:document.getElementById('f-obs').value.trim()};
-  try{await push(ref(db,'registros'),rec);msg('dm','success','✅ Salvo! Aparece no painel do líder agora.');['f-contatos','f-reunioes','f-propostas','f-fechamentos','f-volume','f-obs'].forEach(id=>document.getElementById(id).value='');}
-  catch(e){msg('dm','error','Erro: '+e.message);}
+  msg('dm','loading','Conectando ao Firebase...');
+  try{
+    const nome=await resolveNome(nd);sn(nome);
+    document.getElementById('f-nome').value=nome;document.getElementById('r-assessor').value=nome;
+    const rec={nome,data:new Date().toDateString(),dataMs:Date.now(),
+      contatos:+document.getElementById('f-contatos').value||0,
+      reunioes:+document.getElementById('f-reunioes').value||0,
+      propostas:+document.getElementById('f-propostas').value||0,
+      fechamentos:+document.getElementById('f-fechamentos').value||0,
+      produto:document.getElementById('f-produto').value,
+      volume:+document.getElementById('f-volume').value||0,
+      dificuldade:document.getElementById('f-dificuldade').value,
+      energia:+document.getElementById('f-energia').value||7,
+      obs:document.getElementById('f-obs').value.trim()};
+    const resultado = await push(ref(db,'registros'),rec);
+    if(resultado && resultado.key){
+      msg('dm','success','✅ Salvo com sucesso! ID: '+resultado.key);
+      ['f-contatos','f-reunioes','f-propostas','f-fechamentos','f-volume','f-obs'].forEach(id=>document.getElementById(id).value='');
+    } else {
+      msg('dm','error','Erro: não foi possível confirmar o salvamento.');
+    }
+  }catch(e){
+    msg('dm','error','❌ Erro Firebase: '+e.message+' | Código: '+(e.code||'desconhecido'));
+    console.error('Firebase error:',e);
+  }
 }
 window.salvarReuniao=async function(){
   const nd=document.getElementById('r-assessor').value.trim()||gn();
   if(!nd){msg('rm','error','Preencha o nome do assessor.');return;}
   const cn=document.getElementById('r-cliente-nome').value.trim();
   if(!cn){msg('rm','error','Preencha o nome do cliente.');return;}
-  msg('rm','loading','Salvando no Firebase...');
-  const nome=await resolveNome(nd);document.getElementById('r-assessor').value=nome;
-  const r={assessor:nome,dataMs:Date.now(),data:new Date().toDateString(),
-    clienteNome:cn,clienteEmpresa:document.getElementById('r-cliente-empresa').value.trim(),
-    clientePerfil:document.getElementById('r-cliente-perfil').value,
-    clienteContato:document.getElementById('r-cliente-contato').value.trim(),
-    tipo:document.getElementById('r-tipo').value,produto:document.getElementById('r-produto').value,
-    volumeEstimado:+document.getElementById('r-volume').value||0,
-    resultado:document.getElementById('r-resultado').value,
-    objecao:document.getElementById('r-objecao').value,
-    proximoPasso:document.getElementById('r-proximo').value.trim(),
-    dataRetorno:document.getElementById('r-retorno').value,
-    temperatura:document.getElementById('r-temperatura').value,
-    obs:document.getElementById('r-obs').value.trim()};
-  try{await push(ref(db,'reunioes'),r);msg('rm','success','✅ Reunião registrada! Aparece na análise do líder.');['r-cliente-nome','r-cliente-empresa','r-cliente-contato','r-volume','r-proximo','r-retorno','r-obs'].forEach(id=>document.getElementById(id).value='');}
-  catch(e){msg('rm','error','Erro: '+e.message);}
+  msg('rm','loading','Conectando ao Firebase...');
+  try{
+    const nome=await resolveNome(nd);document.getElementById('r-assessor').value=nome;
+    const r={assessor:nome,dataMs:Date.now(),data:new Date().toDateString(),
+      clienteNome:cn,clienteEmpresa:document.getElementById('r-cliente-empresa').value.trim(),
+      clientePerfil:document.getElementById('r-cliente-perfil').value,
+      clienteContato:document.getElementById('r-cliente-contato').value.trim(),
+      tipo:document.getElementById('r-tipo').value,produto:document.getElementById('r-produto').value,
+      volumeEstimado:+document.getElementById('r-volume').value||0,
+      resultado:document.getElementById('r-resultado').value,
+      objecao:document.getElementById('r-objecao').value,
+      proximoPasso:document.getElementById('r-proximo').value.trim(),
+      dataRetorno:document.getElementById('r-retorno').value,
+      temperatura:document.getElementById('r-temperatura').value,
+      obs:document.getElementById('r-obs').value.trim()};
+    const resultado = await push(ref(db,'reunioes'),r);
+    if(resultado && resultado.key){
+      msg('rm','success','✅ Reunião salva! ID: '+resultado.key);
+      ['r-cliente-nome','r-cliente-empresa','r-cliente-contato','r-volume','r-proximo','r-retorno','r-obs'].forEach(id=>document.getElementById(id).value='');
+    } else {
+      msg('rm','error','Erro: não foi possível confirmar o salvamento.');
+    }
+  }catch(e){
+    msg('rm','error','❌ Erro Firebase: '+e.message+' | Código: '+(e.code||'desconhecido'));
+    console.error('Firebase error:',e);
+  }
 }
 function msg(id,t,m){const e=document.getElementById(id);e.textContent=m;e.className='fmsg fmsg-'+t;e.style.display='block';if(t==='success')setTimeout(()=>e.style.display='none',4500);}
 window.updE=function(v){
