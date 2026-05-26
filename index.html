@@ -164,7 +164,6 @@ window.switchTab = function(tab) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('on'));
   document.getElementById('tab-' + tab).classList.add('on');
   document.getElementById('panel-' + tab).classList.add('on');
-  event.currentTarget.classList.add('on');
 }
 
 // Init
