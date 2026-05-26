@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, push, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCI6F7O1YkeAheLZRmqJ94cbVtZWJHfeoo",
@@ -26,11 +26,56 @@ const db = getDatabase(app);
 function getNome() { return localStorage.getItem('fi_nome') || ''; }
 function setNome(n) { localStorage.setItem('fi_nome', n); }
 
+// SIMILARIDADE DE NOMES — evita duplicar assessores
+function similarity(a, b) {
+  a = a.toLowerCase().trim();
+  b = b.toLowerCase().trim();
+  if (a === b) return 1;
+  // verifica se um contém o outro
+  if (a.includes(b) || b.includes(a)) return 0.9;
+  // compara palavras individuais
+  const wa = a.split(' ').filter(Boolean);
+  const wb = b.split(' ').filter(Boolean);
+  let matches = 0;
+  wa.forEach(w => { if (wb.some(x => x.startsWith(w) || w.startsWith(x))) matches++; });
+  return matches / Math.max(wa.length, wb.length);
+}
+
+async function resolverNome(nomeDigitado) {
+  // Busca nomes já existentes no Firebase
+  try {
+    const snap = await get(ref(db, 'registros'));
+    const nomesExistentes = new Set();
+    if (snap.exists()) snap.forEach(c => { if (c.val().nome) nomesExistentes.add(c.val().nome); });
+    const snap2 = await get(ref(db, 'reunioes'));
+    if (snap2.exists()) snap2.forEach(c => { if (c.val().assessor) nomesExistentes.add(c.val().assessor); });
+
+    // Verifica similaridade com cada nome existente
+    let melhorNome = nomeDigitado;
+    let melhorScore = 0;
+    nomesExistentes.forEach(existente => {
+      const score = similarity(nomeDigitado, existente);
+      if (score > melhorScore) { melhorScore = score; melhorNome = existente; }
+    });
+
+    // Se similaridade >= 70%, usa o nome já existente
+    if (melhorScore >= 0.7 && melhorNome !== nomeDigitado) {
+      console.log(`Nome "${nomeDigitado}" → usando "${melhorNome}" (${Math.round(melhorScore*100)}% similar)`);
+      return melhorNome;
+    }
+  } catch(e) { console.warn('Erro ao resolver nome:', e); }
+  return nomeDigitado;
+}
+
 // SUBMIT DIÁRIO
 window.salvarDiario = async function() {
-  const nome = document.getElementById('f-nome').value.trim();
-  if (!nome) { alert('Preencha seu nome.'); return; }
+  const nomeDigitado = document.getElementById('f-nome').value.trim();
+  if (!nomeDigitado) { alert('Preencha seu nome.'); return; }
+  const nome = await resolverNome(nomeDigitado);
   setNome(nome);
+  // Atualiza campo com nome resolvido
+  document.getElementById('f-nome').value = nome;
+  document.getElementById('r-assessor').value = nome;
 
   const rec = {
     nome,
@@ -59,8 +104,10 @@ window.salvarDiario = async function() {
 
 // SUBMIT REUNIÃO
 window.salvarReuniao = async function() {
-  const nome = document.getElementById('r-assessor').value.trim() || getNome();
-  if (!nome) { alert('Preencha o nome do assessor.'); return; }
+  const nomeDigitado = document.getElementById('r-assessor').value.trim() || getNome();
+  if (!nomeDigitado) { alert('Preencha o nome do assessor.'); return; }
+  const nome = await resolverNome(nomeDigitado);
+  document.getElementById('r-assessor').value = nome;
 
   const clienteNome = document.getElementById('r-cliente-nome').value.trim();
   if (!clienteNome) { alert('Preencha o nome do cliente.'); return; }
