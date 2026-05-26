@@ -26,16 +26,8 @@ function sim(a,b){
   return m>0?0.95:0;
 }
 async function resolveNome(nd){
-  try{
-    const s1=await get(ref(db,'registros')),s2=await get(ref(db,'reunioes'));
-    const ns=new Set();
-    if(s1.exists())s1.forEach(c=>{if(c.val().nome)ns.add(c.val().nome);});
-    if(s2.exists())s2.forEach(c=>{if(c.val().assessor)ns.add(c.val().assessor);});
-    let best=nd,score=0;
-    ns.forEach(n=>{const s=sim(nd,n);if(s>score){score=s;best=n;}});
-    if(score>=.9&&best!==nd)return best;
-  }catch(e){}
-  return nd;
+  // Salva exatamente como digitado — sem mesclagem automática
+  return nd.trim();
 }
 window.salvarDiario=async function(){
   const nd=document.getElementById('f-nome').value.trim();
