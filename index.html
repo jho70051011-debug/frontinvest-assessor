@@ -14,10 +14,16 @@ const gn=()=>localStorage.getItem('fi_nome')||'';
 const sn=n=>localStorage.setItem('fi_nome',n);
 function sim(a,b){
   a=a.toLowerCase().trim();b=b.toLowerCase().trim();
-  if(a===b)return 1;if(a.includes(b)||b.includes(a))return .9;
+  if(a===b)return 1;
+  // Só considera similar se o primeiro nome E pelo menos mais uma palavra batem
   const wa=a.split(' ').filter(Boolean),wb=b.split(' ').filter(Boolean);
-  let m=0;wa.forEach(w=>{if(wb.some(x=>x.startsWith(w)||w.startsWith(x)))m++;});
-  return m/Math.max(wa.length,wb.length);
+  if(wa[0]!==wb[0])return 0; // primeiro nome diferente = pessoas diferentes
+  if(wa.length===1&&wb.length===1)return 1; // mesmo nome único
+  // Conta palavras em comum além do primeiro nome
+  let m=0;
+  wa.slice(1).forEach(w=>{if(wb.slice(1).some(x=>x===w))m++;});
+  // Só mescla se tiver pelo menos 1 palavra adicional igual
+  return m>0?0.95:0;
 }
 async function resolveNome(nd){
   try{
@@ -27,7 +33,7 @@ async function resolveNome(nd){
     if(s2.exists())s2.forEach(c=>{if(c.val().assessor)ns.add(c.val().assessor);});
     let best=nd,score=0;
     ns.forEach(n=>{const s=sim(nd,n);if(s>score){score=s;best=n;}});
-    if(score>=.7&&best!==nd)return best;
+    if(score>=.9&&best!==nd)return best;
   }catch(e){}
   return nd;
 }
