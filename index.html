@@ -4,301 +4,268 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Front Invest — Registro Diário</title>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, push, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyCI6F7O1YkeAheLZRmqJ94cbVtZWJHfeoo",
-  authDomain: "frontinvest-crm.firebaseapp.com",
-  databaseURL: "https://frontinvest-crm-default-rtdb.firebaseio.com",
-  projectId: "frontinvest-crm",
-  storageBucket: "frontinvest-crm.firebasestorage.app",
-  messagingSenderId: "557480741861",
-  appId: "1:557480741861:web:0804c6d1921f64279dfd0c"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-
-// Salva nome do assessor
-function getNome() { return localStorage.getItem('fi_nome') || ''; }
-function setNome(n) { localStorage.setItem('fi_nome', n); }
-
-// SIMILARIDADE DE NOMES — evita duplicar assessores
-function similarity(a, b) {
-  a = a.toLowerCase().trim();
-  b = b.toLowerCase().trim();
-  if (a === b) return 1;
-  // verifica se um contém o outro
-  if (a.includes(b) || b.includes(a)) return 0.9;
-  // compara palavras individuais
-  const wa = a.split(' ').filter(Boolean);
-  const wb = b.split(' ').filter(Boolean);
-  let matches = 0;
-  wa.forEach(w => { if (wb.some(x => x.startsWith(w) || w.startsWith(x))) matches++; });
-  return matches / Math.max(wa.length, wb.length);
+const firebaseConfig={apiKey:"AIzaSyCI6F7O1YkeAheLZRmqJ94cbVtZWJHfeoo",authDomain:"frontinvest-crm.firebaseapp.com",databaseURL:"https://frontinvest-crm-default-rtdb.firebaseio.com",projectId:"frontinvest-crm",storageBucket:"frontinvest-crm.firebasestorage.app",messagingSenderId:"557480741861",appId:"1:557480741861:web:0804c6d1921f64279dfd0c"};
+const app=initializeApp(firebaseConfig);
+const db=getDatabase(app);
+function getNome(){return localStorage.getItem('fi_nome')||'';}
+function setNome(n){localStorage.setItem('fi_nome',n);}
+function similarity(a,b){
+  a=a.toLowerCase().trim();b=b.toLowerCase().trim();
+  if(a===b)return 1;if(a.includes(b)||b.includes(a))return 0.9;
+  const wa=a.split(' ').filter(Boolean),wb=b.split(' ').filter(Boolean);
+  let m=0;wa.forEach(w=>{if(wb.some(x=>x.startsWith(w)||w.startsWith(x)))m++;});
+  return m/Math.max(wa.length,wb.length);
 }
-
-async function resolverNome(nomeDigitado) {
-  // Busca nomes já existentes no Firebase
-  try {
-    const snap = await get(ref(db, 'registros'));
-    const nomesExistentes = new Set();
-    if (snap.exists()) snap.forEach(c => { if (c.val().nome) nomesExistentes.add(c.val().nome); });
-    const snap2 = await get(ref(db, 'reunioes'));
-    if (snap2.exists()) snap2.forEach(c => { if (c.val().assessor) nomesExistentes.add(c.val().assessor); });
-
-    // Verifica similaridade com cada nome existente
-    let melhorNome = nomeDigitado;
-    let melhorScore = 0;
-    nomesExistentes.forEach(existente => {
-      const score = similarity(nomeDigitado, existente);
-      if (score > melhorScore) { melhorScore = score; melhorNome = existente; }
-    });
-
-    // Se similaridade >= 70%, usa o nome já existente
-    if (melhorScore >= 0.7 && melhorNome !== nomeDigitado) {
-      console.log(`Nome "${nomeDigitado}" → usando "${melhorNome}" (${Math.round(melhorScore*100)}% similar)`);
-      return melhorNome;
-    }
-  } catch(e) { console.warn('Erro ao resolver nome:', e); }
+async function resolverNome(nomeDigitado){
+  try{
+    const snap=await get(ref(db,'registros'));
+    const nomes=new Set();
+    if(snap.exists())snap.forEach(c=>{if(c.val().nome)nomes.add(c.val().nome);});
+    const snap2=await get(ref(db,'reunioes'));
+    if(snap2.exists())snap2.forEach(c=>{if(c.val().assessor)nomes.add(c.val().assessor);});
+    let best=nomeDigitado,score=0;
+    nomes.forEach(n=>{const s=similarity(nomeDigitado,n);if(s>score){score=s;best=n;}});
+    if(score>=0.7&&best!==nomeDigitado){console.log(`Nome "${nomeDigitado}" → "${best}" (${Math.round(score*100)}%)`);return best;}
+  }catch(e){console.warn(e);}
   return nomeDigitado;
 }
-
-// SUBMIT DIÁRIO
-window.salvarDiario = async function() {
-  const nomeDigitado = document.getElementById('f-nome').value.trim();
-  if (!nomeDigitado) { alert('Preencha seu nome.'); return; }
-  const nome = await resolverNome(nomeDigitado);
+window.salvarDiario=async function(){
+  const nd=document.getElementById('f-nome').value.trim();
+  if(!nd){showMsg('diario-msg','error','Preencha seu nome.');return;}
+  showMsg('diario-msg','loading','Salvando...');
+  const nome=await resolverNome(nd);
   setNome(nome);
-  // Atualiza campo com nome resolvido
-  document.getElementById('f-nome').value = nome;
-  document.getElementById('r-assessor').value = nome;
-
-  const rec = {
-    nome,
-    data: new Date().toDateString(),
-    dataMs: Date.now(),
-    contatos: parseInt(document.getElementById('f-contatos').value) || 0,
-    reunioes: parseInt(document.getElementById('f-reunioes').value) || 0,
-    propostas: parseInt(document.getElementById('f-propostas').value) || 0,
-    fechamentos: parseInt(document.getElementById('f-fechamentos').value) || 0,
-    produto: document.getElementById('f-produto').value,
-    volume: parseInt(document.getElementById('f-volume').value) || 0,
-    dificuldade: document.getElementById('f-dificuldade').value,
-    energia: parseInt(document.getElementById('f-energia').value) || 7,
-    obs: document.getElementById('f-obs').value.trim()
-  };
-
-  try {
-    await push(ref(db, 'registros'), rec);
-    showSuccess('diario-ok', '✅ Registro diário salvo! Aparece no painel do líder agora.');
-    // limpar campos
-    ['f-contatos','f-reunioes','f-propostas','f-fechamentos','f-volume','f-obs'].forEach(id => document.getElementById(id).value = '');
-  } catch(e) {
-    alert('Erro ao salvar: ' + e.message);
-  }
+  document.getElementById('f-nome').value=nome;
+  document.getElementById('r-assessor').value=nome;
+  const rec={nome,data:new Date().toDateString(),dataMs:Date.now(),
+    contatos:parseInt(document.getElementById('f-contatos').value)||0,
+    reunioes:parseInt(document.getElementById('f-reunioes').value)||0,
+    propostas:parseInt(document.getElementById('f-propostas').value)||0,
+    fechamentos:parseInt(document.getElementById('f-fechamentos').value)||0,
+    produto:document.getElementById('f-produto').value,
+    volume:parseInt(document.getElementById('f-volume').value)||0,
+    dificuldade:document.getElementById('f-dificuldade').value,
+    energia:parseInt(document.getElementById('f-energia').value)||7,
+    obs:document.getElementById('f-obs').value.trim()};
+  try{
+    await push(ref(db,'registros'),rec);
+    showMsg('diario-msg','success','✅ Registro salvo! Aparece no painel do líder agora.');
+    ['f-contatos','f-reunioes','f-propostas','f-fechamentos','f-volume','f-obs'].forEach(id=>document.getElementById(id).value='');
+  }catch(e){showMsg('diario-msg','error','Erro ao salvar: '+e.message);}
 }
-
-// SUBMIT REUNIÃO
-window.salvarReuniao = async function() {
-  const nomeDigitado = document.getElementById('r-assessor').value.trim() || getNome();
-  if (!nomeDigitado) { alert('Preencha o nome do assessor.'); return; }
-  const nome = await resolverNome(nomeDigitado);
-  document.getElementById('r-assessor').value = nome;
-
-  const clienteNome = document.getElementById('r-cliente-nome').value.trim();
-  if (!clienteNome) { alert('Preencha o nome do cliente.'); return; }
-
-  const reuniao = {
-    assessor: nome,
-    dataMs: Date.now(),
-    data: new Date().toDateString(),
-    // Dados do cliente
-    clienteNome,
-    clienteEmpresa: document.getElementById('r-cliente-empresa').value.trim(),
-    clientePerfil: document.getElementById('r-cliente-perfil').value,
-    clienteContato: document.getElementById('r-cliente-contato').value.trim(),
-    // Dados da reunião
-    tipo: document.getElementById('r-tipo').value,
-    produto: document.getElementById('r-produto').value,
-    volumeEstimado: parseInt(document.getElementById('r-volume').value) || 0,
-    resultado: document.getElementById('r-resultado').value,
-    objecao: document.getElementById('r-objecao').value,
-    proximoPasso: document.getElementById('r-proximo').value.trim(),
-    dataRetorno: document.getElementById('r-retorno').value,
-    temperatura: document.getElementById('r-temperatura').value,
-    obs: document.getElementById('r-obs').value.trim()
-  };
-
-  try {
-    await push(ref(db, 'reunioes'), reuniao);
-    showSuccess('reuniao-ok', '✅ Reunião registrada! Aparece na análise do painel do líder.');
-    // limpar campos de reunião
-    ['r-assessor','r-cliente-nome','r-cliente-empresa','r-cliente-contato','r-volume','r-proximo','r-retorno','r-obs'].forEach(id => document.getElementById(id).value = '');
-  } catch(e) {
-    alert('Erro ao salvar: ' + e.message);
-  }
+window.salvarReuniao=async function(){
+  const nd=document.getElementById('r-assessor').value.trim()||getNome();
+  if(!nd){showMsg('reuniao-msg','error','Preencha o nome do assessor.');return;}
+  const cn=document.getElementById('r-cliente-nome').value.trim();
+  if(!cn){showMsg('reuniao-msg','error','Preencha o nome do cliente.');return;}
+  showMsg('reuniao-msg','loading','Salvando...');
+  const nome=await resolverNome(nd);
+  document.getElementById('r-assessor').value=nome;
+  const reuniao={assessor:nome,dataMs:Date.now(),data:new Date().toDateString(),
+    clienteNome:cn,clienteEmpresa:document.getElementById('r-cliente-empresa').value.trim(),
+    clientePerfil:document.getElementById('r-cliente-perfil').value,
+    clienteContato:document.getElementById('r-cliente-contato').value.trim(),
+    tipo:document.getElementById('r-tipo').value,produto:document.getElementById('r-produto').value,
+    volumeEstimado:parseInt(document.getElementById('r-volume').value)||0,
+    resultado:document.getElementById('r-resultado').value,
+    objecao:document.getElementById('r-objecao').value,
+    proximoPasso:document.getElementById('r-proximo').value.trim(),
+    dataRetorno:document.getElementById('r-retorno').value,
+    temperatura:document.getElementById('r-temperatura').value,
+    obs:document.getElementById('r-obs').value.trim()};
+  try{
+    await push(ref(db,'reunioes'),reuniao);
+    showMsg('reuniao-msg','success','✅ Reunião registrada! Aparece na análise do líder.');
+    ['r-cliente-nome','r-cliente-empresa','r-cliente-contato','r-volume','r-proximo','r-retorno','r-obs'].forEach(id=>document.getElementById(id).value='');
+  }catch(e){showMsg('reuniao-msg','error','Erro: '+e.message);}
 }
-
-function showSuccess(id, msg) {
-  const el = document.getElementById(id);
-  el.textContent = msg;
-  el.style.display = 'block';
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  setTimeout(() => el.style.display = 'none', 4000);
+function showMsg(id,type,msg){
+  const el=document.getElementById(id);
+  el.textContent=msg;el.className='form-msg msg-'+type;el.style.display='block';
+  if(type==='success')setTimeout(()=>el.style.display='none',4000);
 }
-
-window.updE = function(v) {
-  document.getElementById('eval').textContent = v;
-  const EMS = {1:'Dia muito difícil 😔',2:'Bem abaixo 😔',3:'Abaixo do esperado 😕',4:'Razoável 😐',5:'Tá no caminho 🙂',6:'Bom 🙂',7:'Bom ritmo 💪',8:'Alta energia 🔥',9:'Dia excelente 🚀',10:'Fora de série 🏆'};
-  document.getElementById('elbl').textContent = EMS[v] || '';
-  const pct = ((v-1)/9)*100;
-  document.getElementById('f-energia').style.background = `linear-gradient(to right,#b8912e 0%,#b8912e ${pct}%,#e2e0d8 ${pct}%)`;
+window.updE=function(v){
+  document.getElementById('eval').textContent=v;
+  const EMS={1:'Muito difícil 😔',2:'Abaixo 😔',3:'Fraco 😕',4:'Razoável 😐',5:'Tá no caminho 🙂',6:'Bom 🙂',7:'Bom ritmo 💪',8:'Alta energia 🔥',9:'Excelente 🚀',10:'Fora de série 🏆'};
+  document.getElementById('elbl').textContent=EMS[v]||'';
+  const pct=((v-1)/9)*100;
+  document.getElementById('f-energia').style.background=`linear-gradient(to right,#c9a84c 0%,#c9a84c ${pct}%,rgba(255,255,255,0.08) ${pct}%)`;
 }
-
-window.switchTab = function(tab) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('on'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('on'));
-  document.getElementById('tab-' + tab).classList.add('on');
-  document.getElementById('panel-' + tab).classList.add('on');
+window.switchTab=function(tab){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('on'));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('on'));
+  document.getElementById('tab-'+tab).classList.add('on');
+  document.getElementById('panel-'+tab).classList.add('on');
 }
-
-// Init
-document.addEventListener('DOMContentLoaded', () => {
-  const d = new Date();
-  const MOTIVS = ['Domingo é para recarregar. Amanhã a caça começa.','Segunda é o dia que separa quem quer de quem faz.','Terça de foco total. Cada reunião pode mudar seu ano.','Metade da semana. Hoje você vira o jogo.','Quinta é o melhor dia para fechar.','Sexta é colheita. Tudo que plantou matura hoje.','Sábado: quem trabalha agora não se preocupa com a concorrência.'];
-  document.getElementById('dchip').textContent = d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short'});
-  document.getElementById('mmsg').textContent = MOTIVS[d.getDay()];
-  const nome = getNome();
-  if (nome) { document.getElementById('f-nome').value = nome; document.getElementById('r-assessor').value = nome; }
+window.setTemp=function(val){
+  document.getElementById('r-temperatura').value=val;
+  document.querySelectorAll('.temp-opt').forEach(b=>{b.classList.remove('sel');b.style.opacity='.45';});
+  const m={'Quente 🔥':'tq','Morno ⏳':'tm','Frio ❄️':'tf'};
+  if(m[val]){const el=document.getElementById(m[val]);el.classList.add('sel');el.style.opacity='1';}
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  const d=new Date();
+  const MOTIVS=['Domingo é para recarregar. Amanhã a caça começa.','Segunda é o dia que separa quem quer de quem faz.','Terça de foco total. Cada reunião pode mudar seu ano.','Metade da semana. Hoje você vira o jogo.','Quinta é o melhor dia para fechar.','Sexta é colheita. Tudo que plantou matura hoje.','Sábado: quem trabalha agora não se preocupa com a concorrência.'];
+  document.getElementById('dchip').textContent=d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short'});
+  document.getElementById('mmsg').textContent=MOTIVS[d.getDay()];
+  const nome=getNome();
+  if(nome){document.getElementById('f-nome').value=nome;document.getElementById('r-assessor').value=nome;}
   updE(7);
 });
 </script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
-  --bg:#f4f3ef;--bg2:#fff;--bg3:#eceae4;--bg4:#e2e0d8;
-  --border:#e0ded6;--border2:#c8c6bc;
-  --text:#16160e;--text2:#6b6b60;--text3:#aeada4;
-  --gold:#8a6a1c;--gold2:#b8912e;--goldbg:#fdf5e0;--goldborder:#e8d080;
-  --green:#15803d;--greenbg:#f0fdf4;--greenborder:#86efac;
-  --red:#991b1b;--blue:#1d3fa8;--amber:#92400e;
-  --r:12px;--rs:8px
+  --bg:#06070f;--bg2:#0a0c1a;--bg3:#0f1122;--bg4:#151828;
+  --bg-glass:rgba(10,12,26,0.85);
+  --border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.15);
+  --text:#ededf5;--text2:#8890a8;--muted:#42465e;
+  --gold:#c9a84c;--gold2:#e8c97a;--gold3:#f7e6b0;
+  --green:#22c55e;--greenbg:rgba(34,197,94,.08);--greenborder:rgba(34,197,94,.25);
+  --red:#ef4444;--redbg:rgba(239,68,68,.08);--redborder:rgba(239,68,68,.25);
+  --amber:#f59e0b;--blue:#3d6aff;
+  --r:13px;--rs:9px
 }
-html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif}
+html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif}
+body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");pointer-events:none;z-index:0;opacity:.4}
+body::after{content:'';position:fixed;bottom:-100px;left:-100px;width:400px;height:400px;background:radial-gradient(ellipse,rgba(201,168,76,0.05) 0%,transparent 70%);pointer-events:none;z-index:0}
 
-.hdr{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
-.logo{display:flex;align-items:center;gap:9px}
-.li{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#8a6a1c,#c9a84c);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.li svg{width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
-.ln{font-size:15px;font-weight:800;letter-spacing:-.03em}
-.ls{font-size:10px;color:var(--text3);display:block}
-.dchip{font-size:12px;color:var(--text2);background:var(--bg3);padding:5px 12px;border-radius:99px;border:1px solid var(--border)}
+/* HEADER */
+.hdr{background:var(--bg-glass);border-bottom:1px solid var(--border);padding:0 20px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;backdrop-filter:blur(20px)}
+.hdr::before{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(201,168,76,.3),transparent);pointer-events:none}
+.logo-row{display:flex;align-items:center;gap:10px}
+.logo-gem{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#8a6a1c,#c9a84c,#f5e4b0);display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(201,168,76,.2);flex-shrink:0}
+.logo-gem svg{width:15px;height:15px;fill:none;stroke:#050610;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.logo-name{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;letter-spacing:-.02em;background:linear-gradient(135deg,var(--gold2),var(--gold3));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.logo-sub{font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.dchip{font-size:11px;color:var(--text2);background:var(--bg3);padding:5px 13px;border-radius:99px;border:1px solid var(--border);font-family:'JetBrains Mono',monospace;letter-spacing:.04em}
 
-.wrap{max-width:580px;margin:0 auto;padding:20px 16px 100px}
+/* LAYOUT */
+.wrap{max-width:580px;margin:0 auto;padding:28px 16px 100px;position:relative;z-index:1}
 
-.motiv{background:var(--goldbg);border:1px solid var(--goldborder);border-left:4px solid var(--gold2);border-radius:var(--r);padding:14px 16px;margin-bottom:20px}
-.mt{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold2);font-weight:700;margin-bottom:5px}
-.mb{font-size:13px;color:var(--gold);line-height:1.6;font-weight:500}
+/* MOTIVATION */
+.motiv{background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.03));border:1px solid rgba(201,168,76,.2);border-radius:var(--r);padding:16px 20px;margin-bottom:24px;position:relative;overflow:hidden}
+.motiv::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(201,168,76,.5),transparent)}
+.motiv-tag{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--gold);font-weight:700;margin-bottom:8px;font-family:'JetBrains Mono',monospace}
+.motiv-text{font-size:13px;color:var(--gold3);line-height:1.65;font-weight:400;opacity:.9}
+
+/* PAGE TITLE */
+.page-title{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;letter-spacing:-.03em;margin-bottom:4px;line-height:1}
+.page-sub{font-size:13px;color:var(--text2);margin-bottom:24px;letter-spacing:-.01em}
 
 /* TABS */
-.tabs{display:flex;gap:3px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:4px;margin-bottom:20px}
-.tab-btn{flex:1;padding:10px;border-radius:var(--rs);font-size:13px;font-weight:600;cursor:pointer;color:var(--text2);background:none;border:none;font-family:'Outfit',sans-serif;transition:all .15s;text-align:center}
-.tab-btn.on{background:var(--text);color:var(--bg2)}
-.tab-panel{display:none}.tab-panel.on{display:block}
+.tabs{display:flex;gap:3px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:4px;margin-bottom:22px}
+.tab-btn{flex:1;padding:11px;border-radius:var(--rs);font-size:13px;font-weight:600;cursor:pointer;color:var(--text2);background:none;border:1px solid transparent;font-family:'Space Grotesk',sans-serif;transition:all .2s;letter-spacing:-.01em}
+.tab-btn:hover{background:var(--bg3);color:var(--text)}
+.tab-btn.on{background:linear-gradient(135deg,rgba(201,168,76,.15),rgba(201,168,76,.08));color:var(--gold2);border-color:rgba(201,168,76,.25)}
+.tab-panel{display:none}.tab-panel.on{display:block;animation:fadeIn .25s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 
-.sec{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px;margin-bottom:12px}
-.stitle{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);padding-bottom:11px;border-bottom:1px solid var(--border);margin-bottom:14px;display:flex;align-items:center;gap:7px}
-.stitle svg{width:13px;height:13px;flex-shrink:0;opacity:.6}
+/* SECTIONS */
+.sec{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:12px;position:relative;overflow:hidden;transition:border-color .2s}
+.sec::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.015),transparent);pointer-events:none}
+.sec:hover{border-color:var(--border2)}
+.sec-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:16px;display:flex;align-items:center;gap:7px;font-family:'JetBrains Mono',monospace}
+.sec-title svg{width:13px;height:13px;opacity:.6;flex-shrink:0}
 
+/* FIELDS */
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .field{margin-bottom:12px}.field:last-child{margin-bottom:0}
-label{font-size:13px;font-weight:600;color:var(--text);display:block;margin-bottom:5px}
-.sub{font-size:11px;color:var(--text3);display:block;margin-bottom:4px}
-input,select,textarea{display:block;width:100%;padding:10px 12px;font-size:14px;font-family:'Outfit',sans-serif;background:var(--bg);border:1.5px solid var(--border2);border-radius:var(--rs);color:var(--text);appearance:none;-webkit-appearance:none;transition:border-color .15s}
-input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold2);box-shadow:0 0 0 3px rgba(184,145,46,.1);background:var(--bg2)}
-input[type=number]{font-weight:600;font-size:16px}
-textarea{resize:vertical;min-height:68px;font-size:13px;line-height:1.55}
-
-/* TEMPERATURA */
-.temp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.temp-btn{padding:10px 6px;border-radius:var(--rs);border:1.5px solid var(--border2);background:var(--bg);font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;text-align:center;transition:all .15s;color:var(--text2)}
-.temp-btn.sel-q{background:#fee2e2;border-color:#fca5a5;color:#991b1b}
-.temp-btn.sel-m{background:#fef3c7;border-color:#fcd34d;color:#92400e}
-.temp-btn.sel-f{background:#dbeafe;border-color:#93c5fd;color:#1e3a8a}
+label{font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px;letter-spacing:.01em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;font-size:10px}
+.sub{font-size:11px;color:var(--muted);display:block;margin-bottom:4px}
+input,select,textarea{display:block;width:100%;padding:11px 14px;font-size:14px;font-family:'Space Grotesk',sans-serif;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);color:var(--text);appearance:none;-webkit-appearance:none;transition:all .2s;line-height:1.4}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,168,76,.1);background:var(--bg4)}
+input[type=number]{font-weight:700;font-size:18px;font-family:'Syne',sans-serif}
+textarea{resize:vertical;min-height:72px;font-size:13px;line-height:1.6}
+select option{background:var(--bg3)}
 
 /* SLIDER */
-.sl-row{display:flex;align-items:center;gap:12px;margin-bottom:5px}
-input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:5px;border-radius:99px;background:var(--bg3);outline:none;cursor:pointer}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--gold2);cursor:pointer;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.2)}
-.sl-val{font-size:22px;font-weight:800;min-width:28px;text-align:right}
-.sl-lbl{font-size:12px;color:var(--text2)}
+.sl-row{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:99px;background:rgba(255,255,255,.08);outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--gold2));cursor:pointer;border:2px solid var(--bg);box-shadow:0 0 10px rgba(201,168,76,.3)}
+input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--gold2));cursor:pointer;border:2px solid var(--bg)}
+.sl-val{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;min-width:32px;text-align:right;color:var(--gold2)}
+.sl-lbl{font-size:12px;color:var(--text2);font-family:'JetBrains Mono',monospace}
 
-.sbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:15px;background:var(--text);color:var(--bg2);border:none;border-radius:var(--rs);font-size:15px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:opacity .15s;margin-top:4px}
-.sbtn:active{opacity:.8}
-.sbtn.gold{background:linear-gradient(135deg,var(--gold),var(--gold2));color:white}
+/* TEMPERATURA */
+.temp-row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.temp-opt{padding:11px 6px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--bg3);font-size:12px;font-weight:600;cursor:pointer;font-family:'Space Grotesk',sans-serif;text-align:center;transition:all .2s;color:var(--text2)}
+.temp-opt:hover{border-color:var(--border);background:var(--bg4)}
+#tq{color:#f87171;background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2)}
+#tm{color:var(--amber);background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.2)}
+#tf{color:#60a5fa;background:rgba(61,106,255,.08);border-color:rgba(61,106,255,.2)}
 
-.success-msg{display:none;background:var(--greenbg);border:1.5px solid var(--greenborder);border-radius:var(--r);padding:14px 16px;font-size:14px;font-weight:600;color:var(--green);text-align:center;margin-top:12px}
+/* BUTTONS */
+.sbtn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;padding:16px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rs);font-size:15px;font-weight:700;cursor:pointer;font-family:'Syne',sans-serif;transition:all .2s;letter-spacing:-.02em;color:var(--text)}
+.sbtn:hover{background:var(--bg3);border-color:var(--border);transform:translateY(-1px)}
+.sbtn:active{transform:translateY(0)}
+.sbtn-primary{background:linear-gradient(135deg,rgba(201,168,76,.2),rgba(201,168,76,.1));border-color:rgba(201,168,76,.35);color:var(--gold2)}
+.sbtn-primary:hover{background:linear-gradient(135deg,rgba(201,168,76,.3),rgba(201,168,76,.15));border-color:rgba(201,168,76,.5)}
 
-/* TEMPERATURA SELECT */
-.temp-wrap{display:flex;gap:6px;margin-top:4px}
-.topt{flex:1;padding:9px 4px;border-radius:var(--rs);border:1.5px solid var(--border2);background:var(--bg);font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;text-align:center;transition:all .15s;color:var(--text2)}
-.topt:hover{border-color:var(--border2)}
+/* MESSAGES */
+.form-msg{display:none;border-radius:var(--rs);padding:13px 16px;font-size:13px;font-weight:500;margin-top:12px;text-align:center}
+.msg-success{background:var(--greenbg);border:1px solid var(--greenborder);color:#4ade80}
+.msg-error{background:var(--redbg);border:1px solid var(--redborder);color:#f87171}
+.msg-loading{background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);color:var(--gold2)}
+
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+@media(max-width:480px){.row2{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 
-<div class="hdr">
-  <div class="logo">
-    <div class="li"><svg viewBox="0 0 16 16"><polyline points="1,12 5,7 9,9.5 15,3"/><polyline points="11,3 15,3 15,7"/></svg></div>
-    <div><span class="ln">Front Invest</span><span class="ls">Registro do assessor</span></div>
+<header class="hdr">
+  <div class="logo-row">
+    <div class="logo-gem"><svg viewBox="0 0 16 16"><polyline points="1,12 5,7 9,9.5 15,3"/><polyline points="11,3 15,3 15,7"/></svg></div>
+    <div><div class="logo-name">Front Invest</div><div class="logo-sub">Registro do assessor</div></div>
   </div>
   <div class="dchip" id="dchip"></div>
-</div>
+</header>
 
 <div class="wrap">
 
   <div class="motiv">
-    <div class="mt">💬 Motivação do dia</div>
-    <div class="mb" id="mmsg"></div>
+    <div class="motiv-tag">⚡ MOTIVAÇÃO DO DIA</div>
+    <div class="motiv-text" id="mmsg"></div>
   </div>
 
-  <!-- TABS -->
+  <div class="page-title">Seu registro</div>
+  <div class="page-sub">Preencha ao fim do expediente — menos de 2 minutos.</div>
+
   <div class="tabs">
     <button class="tab-btn on" id="tab-diario" onclick="switchTab('diario')">📋 Registro diário</button>
-    <button class="tab-btn" id="tab-reuniao" onclick="switchTab('reuniao')">🤝 Registrar reunião</button>
+    <button class="tab-btn" id="tab-reuniao" onclick="switchTab('reuniao')">🤝 Reunião detalhada</button>
   </div>
 
-  <!-- ===== PAINEL DIÁRIO ===== -->
+  <!-- DIÁRIO -->
   <div class="tab-panel on" id="panel-diario">
 
     <div class="sec">
-      <div class="stitle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="5.5" r="3"/><path d="M2 14.5c0-3.3 2.7-5 6-5s6 1.7 6 5"/></svg>Identificação</div>
-      <div class="field">
-        <label>Seu nome</label>
-        <input type="text" id="f-nome" placeholder="Nome completo" autocomplete="name">
+      <div class="sec-title"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="5.5" r="3"/><path d="M2 14.5c0-3.3 2.7-5 6-5s6 1.7 6 5"/></svg>Identificação</div>
+      <div class="field"><label>Seu nome</label><input type="text" id="f-nome" placeholder="Nome completo" autocomplete="name" autocorrect="off"></div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1.5"/><path d="M5 3V1M11 3V1M2 7h12"/></svg>Atividades do dia</div>
+      <div class="row2">
+        <div class="field"><label>Contatos</label><span class="sub">Ligações e mensagens</span><input type="number" id="f-contatos" min="0" placeholder="0" inputmode="numeric" pattern="[0-9]*"></div>
+        <div class="field"><label>Reuniões</label><span class="sub">Realizadas hoje</span><input type="number" id="f-reunioes" min="0" placeholder="0" inputmode="numeric" pattern="[0-9]*"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Propostas</label><input type="number" id="f-propostas" min="0" placeholder="0" inputmode="numeric" pattern="[0-9]*"></div>
+        <div class="field"><label>Fechamentos</label><input type="number" id="f-fechamentos" min="0" placeholder="0" inputmode="numeric" pattern="[0-9]*"></div>
       </div>
     </div>
 
     <div class="sec">
-      <div class="stitle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1.5"/><path d="M5 3V1M11 3V1M2 7h12"/></svg>Atividades do dia</div>
-      <div class="row2">
-        <div class="field"><label>Contatos</label><span class="sub">Ligações e mensagens</span><input type="number" id="f-contatos" min="0" placeholder="0" inputmode="numeric"></div>
-        <div class="field"><label>Reuniões</label><span class="sub">Realizadas hoje</span><input type="number" id="f-reunioes" min="0" placeholder="0" inputmode="numeric"></div>
-      </div>
-      <div class="row2">
-        <div class="field"><label>Propostas</label><input type="number" id="f-propostas" min="0" placeholder="0" inputmode="numeric"></div>
-        <div class="field"><label>Fechamentos</label><input type="number" id="f-fechamentos" min="0" placeholder="0" inputmode="numeric"></div>
-      </div>
-    </div>
-
-    <div class="sec">
-      <div class="stitle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2.5 1.5"/></svg>Resultado financeiro</div>
-      <div class="field">
-        <label>Produto fechado</label>
+      <div class="sec-title"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2.5 1.5"/></svg>Resultado financeiro</div>
+      <div class="field"><label>Produto fechado</label>
         <select id="f-produto">
           <option value="">Nenhum fechamento hoje</option>
           <option>Mercado livre de energia</option>
@@ -317,16 +284,12 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
           <option>Outro</option>
         </select>
       </div>
-      <div class="field">
-        <label>Volume captado (R$)</label>
-        <input type="number" id="f-volume" min="0" placeholder="0" inputmode="numeric">
-      </div>
+      <div class="field"><label>Volume captado (R$)</label><input type="number" id="f-volume" min="0" placeholder="0" inputmode="numeric" pattern="[0-9]*"></div>
     </div>
 
     <div class="sec">
-      <div class="stitle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 2a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5z"/><path d="M8 6v2l1.5 1"/></svg>Como foi o dia</div>
-      <div class="field">
-        <label>Principal dificuldade</label>
+      <div class="sec-title"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 2a5 5 0 1 1 0 10A5 5 0 0 1 8 2z"/><path d="M8 6v2l1.5 1"/></svg>Como foi o dia</div>
+      <div class="field"><label>Principal dificuldade</label>
         <select id="f-dificuldade">
           <option value="">Selecionar...</option>
           <option>Conseguir contatos / prospecção fria</option>
@@ -340,50 +303,34 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
       </div>
       <div class="field">
         <label>Nível de energia</label>
-        <div class="sl-row">
-          <input type="range" min="1" max="10" value="7" id="f-energia" step="1" oninput="updE(this.value)">
-          <span class="sl-val" id="eval">7</span>
-        </div>
+        <div class="sl-row"><input type="range" min="1" max="10" value="7" id="f-energia" step="1" oninput="updE(this.value)"><span class="sl-val" id="eval">7</span></div>
         <div class="sl-lbl" id="elbl">Bom ritmo 💪</div>
       </div>
-      <div class="field">
-        <label>Observação livre</label>
-        <textarea id="f-obs" placeholder="Insight, cliente promissor, algo que valha registrar..."></textarea>
-      </div>
+      <div class="field"><label>Observação livre</label><textarea id="f-obs" placeholder="Insight, cliente promissor, algo importante do dia..."></textarea></div>
     </div>
 
-    <button class="sbtn" onclick="salvarDiario()">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5l-3-3z"/><polyline points="9,2 9,6 13,6"/><line x1="5" y1="10" x2="11" y2="10"/></svg>
+    <button class="sbtn sbtn-primary" onclick="salvarDiario()">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M13 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5l-3-3z"/><polyline points="9,2 9,6 13,6"/></svg>
       Salvar registro do dia
     </button>
-    <div class="success-msg" id="diario-ok"></div>
+    <div class="form-msg" id="diario-msg"></div>
 
   </div>
 
-  <!-- ===== PAINEL REUNIÃO ===== -->
+  <!-- REUNIÃO -->
   <div class="tab-panel" id="panel-reuniao">
 
     <div class="sec">
-      <div class="stitle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="5.5" r="3"/><path d="M2 14.5c0-3.3 2.7-5 6-5s6 1.7 6 5"/></svg>Assessor responsável</div>
-      <div class="field">
-        <label>Seu nome</label>
-        <input type="text" id="r-assessor" placeholder="Nome do assessor">
-      </div>
+      <div class="sec-title"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="5.5" r="3"/><path d="M2 14.5c0-3.3 2.7-5 6-5s6 1.7 6 5"/></svg>Assessor responsável</div>
+      <div class="field"><label>Seu nome</label><input type="text" id="r-assessor" placeholder="Nome do assessor"></div>
     </div>
 
     <div class="sec">
-      <div class="stitle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M8 5v6"/></svg>Ficha do cliente</div>
-      <div class="field">
-        <label>Nome do cliente</label>
-        <input type="text" id="r-cliente-nome" placeholder="Nome completo">
-      </div>
-      <div class="field">
-        <label>Empresa / Profissão</label>
-        <input type="text" id="r-cliente-empresa" placeholder="Ex: Dono de padaria, Médico, Engenheiro...">
-      </div>
+      <div class="sec-title"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M8 5v6"/></svg>Ficha do cliente</div>
+      <div class="field"><label>Nome do cliente</label><input type="text" id="r-cliente-nome" placeholder="Nome completo"></div>
+      <div class="field"><label>Empresa / Profissão</label><input type="text" id="r-cliente-empresa" placeholder="Ex: Empresário, Médico, Engenheiro..."></div>
       <div class="row2">
-        <div class="field">
-          <label>Perfil financeiro</label>
+        <div class="field"><label>Perfil financeiro</label>
           <select id="r-cliente-perfil">
             <option value="">Selecionar...</option>
             <option>Assalariado</option>
@@ -394,18 +341,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
             <option>Aposentado</option>
           </select>
         </div>
-        <div class="field">
-          <label>Contato (WhatsApp)</label>
-          <input type="text" id="r-cliente-contato" placeholder="(xx) xxxxx-xxxx" inputmode="tel">
-        </div>
+        <div class="field"><label>WhatsApp</label><input type="text" id="r-cliente-contato" placeholder="(xx) xxxxx-xxxx" inputmode="tel"></div>
       </div>
     </div>
 
     <div class="sec">
-      <div class="stitle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 5h12v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5z"/><path d="M2 5l6-3 6 3"/></svg>Dados da reunião</div>
+      <div class="sec-title"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 5h12v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5z"/><path d="M2 5l6-3 6 3"/></svg>Dados da reunião</div>
       <div class="row2">
-        <div class="field">
-          <label>Tipo de reunião</label>
+        <div class="field"><label>Tipo</label>
           <select id="r-tipo">
             <option>Primeiro contato</option>
             <option>Apresentação de proposta</option>
@@ -414,8 +357,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
             <option>Pós-venda</option>
           </select>
         </div>
-        <div class="field">
-          <label>Produto abordado</label>
+        <div class="field"><label>Produto abordado</label>
           <select id="r-produto">
             <option value="">Selecionar...</option>
             <option>Mercado livre de energia</option>
@@ -435,12 +377,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
         </div>
       </div>
       <div class="row2">
-        <div class="field">
-          <label>Volume estimado (R$)</label>
-          <input type="number" id="r-volume" min="0" placeholder="0" inputmode="numeric">
-        </div>
-        <div class="field">
-          <label>Resultado</label>
+        <div class="field"><label>Volume estimado (R$)</label><input type="number" id="r-volume" min="0" placeholder="0" inputmode="numeric" pattern="[0-9]*"></div>
+        <div class="field"><label>Resultado</label>
           <select id="r-resultado">
             <option>Proposta enviada</option>
             <option>Fechado ✅</option>
@@ -451,8 +389,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
           </select>
         </div>
       </div>
-      <div class="field">
-        <label>Principal objeção enfrentada</label>
+      <div class="field"><label>Principal objeção</label>
         <select id="r-objecao">
           <option value="">Nenhuma objeção</option>
           <option>Preço / custo</option>
@@ -467,50 +404,30 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
       </div>
       <div class="field">
         <label>Temperatura do cliente</label>
-        <div class="temp-wrap">
-          <button class="topt" id="t-q" onclick="setTemp('Quente 🔥')" style="background:#fee2e2;border-color:#fca5a5;color:#991b1b">🔥 Quente</button>
-          <button class="topt" id="t-m" onclick="setTemp('Morno ⏳')" style="background:#fef3c7;border-color:#fcd34d;color:#92400e">⏳ Morno</button>
-          <button class="topt" id="t-f" onclick="setTemp('Frio ❄️')" style="background:#dbeafe;border-color:#93c5fd;color:#1e3a8a">❄️ Frio</button>
+        <div class="temp-row">
+          <button class="temp-opt" id="tq" onclick="setTemp('Quente 🔥')">🔥 Quente</button>
+          <button class="temp-opt" id="tm" onclick="setTemp('Morno ⏳')" style="opacity:1">⏳ Morno</button>
+          <button class="temp-opt" id="tf" onclick="setTemp('Frio ❄️')">❄️ Frio</button>
         </div>
         <input type="hidden" id="r-temperatura" value="Morno ⏳">
       </div>
     </div>
 
     <div class="sec">
-      <div class="stitle"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="2,4 8,10 14,4"/><rect x="2" y="4" width="12" height="9" rx="1"/></svg>Próximos passos</div>
-      <div class="field">
-        <label>Próximo passo definido</label>
-        <input type="text" id="r-proximo" placeholder="Ex: Enviar proposta de energia até quinta">
-      </div>
-      <div class="field">
-        <label>Data de retorno</label>
-        <input type="date" id="r-retorno">
-      </div>
-      <div class="field">
-        <label>Observações da reunião</label>
-        <textarea id="r-obs" placeholder="Informações importantes sobre o cliente, pontos levantados, contexto..."></textarea>
-      </div>
+      <div class="sec-title"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="2,4 8,10 14,4"/><rect x="2" y="4" width="12" height="9" rx="1"/></svg>Próximos passos</div>
+      <div class="field"><label>Próximo passo definido</label><input type="text" id="r-proximo" placeholder="Ex: Enviar proposta de energia até quinta"></div>
+      <div class="field"><label>Data de retorno</label><input type="date" id="r-retorno"></div>
+      <div class="field"><label>Observações</label><textarea id="r-obs" placeholder="Informações importantes, contexto do cliente, pontos levantados..."></textarea></div>
     </div>
 
-    <button class="sbtn gold" onclick="salvarReuniao()">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5l-3-3z"/><polyline points="9,2 9,6 13,6"/><line x1="5" y1="10" x2="11" y2="10"/></svg>
+    <button class="sbtn sbtn-primary" onclick="salvarReuniao()">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M13 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5l-3-3z"/><polyline points="9,2 9,6 13,6"/></svg>
       Registrar reunião
     </button>
-    <div class="success-msg" id="reuniao-ok"></div>
+    <div class="form-msg" id="reuniao-msg"></div>
 
   </div>
 
 </div>
-
-<script>
-function setTemp(val) {
-  document.getElementById('r-temperatura').value = val;
-  ['t-q','t-m','t-f'].forEach(id => {
-    document.getElementById(id).style.opacity = '0.45';
-  });
-  const map = {'Quente 🔥':'t-q','Morno ⏳':'t-m','Frio ❄️':'t-f'};
-  if(map[val]) document.getElementById(map[val]).style.opacity = '1';
-}
-</script>
 </body>
 </html>
